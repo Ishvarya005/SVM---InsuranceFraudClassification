@@ -1,31 +1,41 @@
 ## necessary imports
+import warnings
+warnings.filterwarnings('ignore')
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 
-import warnings
-warnings.filterwarnings('ignore')
 
 plt.style.use('ggplot')
-
 df = pd.read_csv("insurance_claims.csv")
 
-df.head()
+# Replace missing values denoted by '?' with np.nan
+df.replace('?', np.nan, inplace=True)
 
-# we can see some missing values denoted by '?' so lets replace missing values with np.nan
+# Display summary statistics of the DataFrame
+print("Summary Statistics of the DataFrame:")
+print(df.describe())
 
-df.replace('?', np.nan, inplace = True)
-df.describe()
+# Display information about the DataFrame
+print("\nInformation about the DataFrame:")
 df.info()
-# missing values
-df.isna().sum()
 
+# Count missing values
+missing_values = df.isna().sum()
+print("\nMissing Values:")
+print(missing_values)
+
+# Visualization of missing values using missingno library
 import missingno as msno
-
 msno.bar(df)
+plt.title("Missing Values Visualization",fontsize=20, fontweight="bold", ha="center")
+plt.xlabel("Columns")
+plt.ylabel("Missing Value Count")
 plt.show()
+
 
 df['collision_type'] = df['collision_type'].fillna(df['collision_type'].mode()[0])
 df['property_damage'] = df['property_damage'].fillna(df['property_damage'].mode()[0])
@@ -35,11 +45,10 @@ df.isna().sum()
 
 # heatmap
 
-plt.figure(figsize = (18, 12))
-
+plt.figure(figsize = (14, 5))
 corr = df.corr()
-
 sns.heatmap(data = corr, annot = True, fmt = '.2g', linewidth = 1)
+plt.title("Correlation Heatmap",fontsize=20, fontweight="bold", ha="center")
 plt.show()
 
 df.nunique()
@@ -50,17 +59,18 @@ to_drop = ['policy_number','policy_bind_date','policy_state','insured_zip','inci
            'incident_state','incident_city','insured_hobbies','auto_make','auto_model','auto_year', '_c39']
 
 df.drop(to_drop, inplace = True, axis = 1)
+print("DataFrame after dropping unnecessary columns:")
 df.head()
 
 # checking for multicollinearity
 
-plt.figure(figsize = (18, 12))
-
+plt.figure(figsize = (15,8))
 corr = df.corr()
 mask = np.triu(np.ones_like(corr, dtype = bool))
-
 sns.heatmap(data = corr, mask = mask, annot = True, fmt = '.2g', linewidth = 1)
+plt.title("Correlation Heatmap after dropping columns",fontsize=20, fontweight="bold", ha="center")
 plt.show()
+
 print("After dropping age and total_claim_amt:")
 df.drop(columns = ['age', 'total_claim_amount'], inplace = True, axis = 1)
 df.head()
@@ -73,11 +83,11 @@ y = df['fraud_reported']
 
 # extracting categorical columns
 cat_df = X.select_dtypes(include = ['object'])
-
 cat_df.head()
+
 # printing unique values of each column
 for col in cat_df.columns:
-    print(f"{col}: \n{cat_df[col].unique()}\n")
+    print(f"Unique values in {col}: \n{cat_df[col].unique()}\n")
 
 cat_df = pd.get_dummies(cat_df, drop_first = True)
 cat_df.head()
@@ -92,7 +102,8 @@ num_df.head()
 X = pd.concat([num_df, cat_df], axis = 1)
 X.head()
 
-plt.figure(figsize = (25, 20))
+#Distribution plots
+plt.figure(figsize = (15, 12))
 plotnumber = 1
 
 for col in X.columns:
@@ -100,13 +111,14 @@ for col in X.columns:
         ax = plt.subplot(5, 5, plotnumber)
         sns.distplot(X[col])
         plt.xlabel(col, fontsize = 15)
-
+        plt.ylabel("Frequency", fontsize=15)
     plotnumber += 1
 
 plt.tight_layout()
 plt.show()
 
-plt.figure(figsize = (20, 15))
+#box plot
+plt.figure(figsize = (15, 12))
 plotnumber = 1
 
 for col in X.columns:
@@ -114,7 +126,7 @@ for col in X.columns:
         ax = plt.subplot(5, 5, plotnumber)
         sns.boxplot(X[col])
         plt.xlabel(col, fontsize = 15)
-
+        plt.ylabel("Value", fontsize=15)
     plotnumber += 1
 plt.tight_layout()
 plt.show()
@@ -150,6 +162,7 @@ scaled_data = scaler.fit_transform(num_df)
 scaled_num_df = pd.DataFrame(data=scaled_data, columns=num_df.columns, index=X_train.index)
 X_train.drop(columns=num_df.columns, inplace=True)
 X_train = pd.concat([scaled_num_df, X_train], axis=1)
+
 # Models
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score
@@ -237,6 +250,8 @@ best_svm_model.fit(X_train, y_train)
 # Evaluate the best model on the test set
 y_test_pred = best_svm_model.predict(X_test)
 
+# Best SVM model evaluation on the test set
+print("Evaluation metrics for the best SVM model on the test set:")
 # Accuracy score, confusion matrix, classification report, and AUC-ROC on the test set
 svc_test_acc = accuracy_score(y_test, y_test_pred)
 print(f"Test accuracy of Support Vector Classifier is: {svc_test_acc}")
@@ -325,3 +340,19 @@ print(f"Test accuracy of Decision Tree is : {dtc_test_acc}")
 
 print(confusion_matrix(y_test, y_pred))
 print(classification_report(y_test, y_pred))
+
+#Shap part ---> XAI
+
+import shap
+background_summary = shap.sample(X_train, 10)
+
+explainer = shap.KernelExplainer(lambda x: best_svm_model.decision_function(x), background_summary)
+shap_values = explainer.shap_values(X_test)
+
+# Summary plot for the entire dataset
+shap.summary_plot(shap_values, X_test, plot_type="bar")
+
+# Summary plot for an individual instance
+shap.initjs()
+sample_instance = X_test.sample(n=1, random_state=42)
+shap.force_plot(explainer.expected_value, shap_values[0, :], sample_instance)
